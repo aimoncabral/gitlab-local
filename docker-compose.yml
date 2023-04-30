@@ -2,7 +2,7 @@ version: '3.6'
 
 services:
   web:
-    image: 'gitlab/gitlab-ce:latest'
+    image: 'gitlab/gitlab-ce:15.11.0-ce.0'
     container_name: gitlab-web
     restart: always
     healthcheck:
@@ -21,6 +21,15 @@ services:
         gitlab_rails['monitoring_whitelist'] = ['0.0.0.0/0']
         gitlab_rails['initial_root_password'] = '28w4hHGxg6hITqtK50TfWVbI+XmaFN7hHDu3Qz4MVv0='
         gitlab_rails['initial_shared_runners_registration_token'] = 't0ken'
+
+        #registry
+        gitlab_rails['registry_enabled'] = true
+        gitlab_rails['registry_host'] = "registry.example.com"
+        gitlab_rails['registry_port'] = "5001"
+        gitlab_rails['registry_api_url'] = "https://registry.example.com:5001"
+
+        #Defino acá el certificado CA porque en trusted-certs se seguía borrando, y en origen rompe todo
+        gitlab_rails['env'] = {"SSL_CERT_FILE" => "/etc/ssl/certs/gitlab/rootCA.crt"}
         
         #Firmados con mi propio CertificateAuthority
         nginx['ssl_certificate'] = "/etc/ssl/certs/gitlab/server.crt"
@@ -34,7 +43,7 @@ services:
       - './gitlab_app/config:/etc/gitlab'
       - './gitlab_app/logs:/var/log/gitlab'
       - './gitlab_app/data:/var/opt/gitlab'
-      - './ssl:/etc/ssl/certs/gitlab'      
+      - './ssl:/etc/ssl/certs/gitlab:ro'
     networks:
       dev-net:
         aliases:
@@ -48,7 +57,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./gitlab-runner/config:/etc/gitlab-runner
-      - './ssl/server.crt:/etc/gitlab-runner/certs/ca.crt:ro'
+      - './ssl/server.crt:/etc/gitlab-runner/certs/ca.crt'
     depends_on:
       web:
         condition: service_healthy
@@ -57,6 +66,7 @@ services:
 
   register-gitlab-runner:
     image: gitlab/gitlab-runner:alpine
+    container_name: register-runner
     volumes:
       - ./gitlab-runner/config:/etc/gitlab-runner
       - './ssl/server.crt:/etc/gitlab-runner/certs/ca.crt:ro'
@@ -79,6 +89,26 @@ services:
         condition: service_healthy
     networks: 
       - dev-net
+
+  registry:
+    image: registry:2
+    restart: always
+    container_name: registry
+    hostname: 'registry.example.com'
+    environment:
+      - REGISTRY_HTTP_ADDR=0.0.0.0:5001
+      - REGISTRY_HTTP_TLS_CERTIFICATE=/certs/server.crt
+      - REGISTRY_HTTP_TLS_KEY=/certs/server.key
+    ports:
+      - 5001:5001
+    volumes:
+      - './ssl/:/certs/:ro'
+      - ./gitlab-registry/:/var/lib/registry
+    networks:
+      dev-net:
+        aliases:
+          - registry.example.com
+
 networks:
   dev-net:
     name: dev-net

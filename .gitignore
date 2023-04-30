@@ -1,0 +1,6 @@
+gitlab_app/
+gitlab-runner/
+gitlab-registry/
+ssl/
+justamemory.txt
+
